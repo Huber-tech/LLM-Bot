@@ -1,0 +1,4 @@
+total_return: 0.24163042908786087
+max_drawdown: 0
+win_rate: 1.0
+sharpe_ratio: 226153.68998271282

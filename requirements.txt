@@ -1,0 +1,8 @@
+python-dotenv
+python-binance
+ccxt
+pandas
+numpy
+ta
+aiohttp
+asyncio

@@ -1,0 +1,4 @@
+total_return: 0.0
+max_drawdown: 0
+win_rate: 0
+sharpe_ratio: 0.0
