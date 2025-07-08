@@ -42,7 +42,7 @@ class TradeExecutor:
         # SL/TP berechnen wenn nicht manuell übergeben
         if sl is None or tp is None:
             ohlcv = await self.client.fetch_ohlcv(symbol, timeframe='1h', limit=atr_period + 1)
-            atr = calculate_atr(ohlcv, period=atr_period)[-1]
+            atr = calculate_atr(ohlcv, period=atr_period)
             sl, tp = self._compute_sl_tp(price, atr, side, sl_multiplier, tp_multiplier)
 
         return {

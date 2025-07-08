@@ -1,0 +1,17 @@
+<table>
+  <tr>
+    <th>Strategie</th><th>Trades</th><th>Wins</th><th>Losses</th>
+    <th>Winrate (%)</th><th>Total-PnL</th><th>Ø PnL</th>
+  </tr>
+  {% for row in stats %}
+  <tr>
+    <td>{{ row.strategy }}</td>
+    <td>{{ row.trades }}</td>
+    <td>{{ row.wins }}</td>
+    <td>{{ row.losses }}</td>
+    <td>{{ row.winrate }}</td>
+    <td>{{ row.total_pnl }}</td>
+    <td>{{ row.avg_pnl }}</td>
+  </tr>
+  {% endfor %}
+</table>

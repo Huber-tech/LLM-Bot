@@ -8,7 +8,7 @@ from datetime import datetime
 from statistics import mean, pstdev
 from core.client import BinanceClient
 from core.trade_executor import TradeExecutor
-from strategies.indicators import EMA, RSI, ATR
+from strategies.indicators import calculate_ema, calculate_rsi, ATR
 from utils.logger import logger
 from dotenv import load_dotenv
 
@@ -59,9 +59,9 @@ class Backtester:
             window_ema = [row[4] for row in ohlcv[max(0, i-50):i+1]]
             window_rsi = [row[4] for row in ohlcv[max(0, i-15):i+1]]
             window_atr = ohlcv[max(0, i-15):i+1]
-            ema = EMA(window_ema, period=20)[-1]
-            rsi = RSI(window_rsi, period=14)[-1]
-            atr = ATR(window_atr, period=14)[-1]
+            ema = calculate_ema(window_ema, period=20)
+            rsi = calculate_rsi(window_rsi, period=14)
+            atr = calculate_atr(window_atr, period=14)
 
             # Entry-Signale
             if not self.pos:

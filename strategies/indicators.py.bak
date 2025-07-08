@@ -1,0 +1,27 @@
+# strategies/indicators.py — Version 1.0.1
+
+import pandas as pd
+
+def calculate_ema(series, period=14):
+    return pd.Series(series).ewm(span=period, adjust=False).mean().tolist()
+
+def calculate_rsi(series, period=14):
+    df = pd.Series(series)
+    delta = df.diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    rs = gain / loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(0).tolist()
+
+def calculate_atr(ohlcv, period=14):
+    df = pd.DataFrame(ohlcv, columns=["timestamp", "open", "high", "low", "close", "volume"])
+    df["h-l"] = df["high"] - df["low"]
+    df["h-pc"] = abs(df["high"] - df["close"].shift(1))
+    df["l-pc"] = abs(df["low"] - df["close"].shift(1))
+    tr = df[["h-l", "h-pc", "l-pc"]].max(axis=1)
+    atr = tr.rolling(window=period).mean()
+    return atr.fillna(0).tolist()
+
+def calculate_atr(ohlcv, period=14):
+    return calculate_atr(ohlcv, period)

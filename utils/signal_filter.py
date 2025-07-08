@@ -1,6 +1,6 @@
 # utils/signal_filter.py
 
-from strategies.indicators import EMA, ATR
+from strategies.indicators import calculate_ema, calculate_atr
 
 class SignalFilter:
     def __init__(self, volume_factor=1.2, atr_threshold=0.001, trend_strength=0.001):
@@ -15,7 +15,7 @@ class SignalFilter:
         volumes = [c[5] for c in ohlcv]
 
         # Trend-Erkennung
-        ema = EMA(closes, 20)[-1]
+        ema = calculate_ema(ohlcv, 20)
         price = closes[-1]
         trend_diff = abs(price - ema) / ema
         if trend_diff < self.trend_strength:
@@ -27,7 +27,7 @@ class SignalFilter:
             return False  # Kein Volumenimpuls
 
         # ATR-basierte Volatilitätsprüfung
-        atr = ATR(ohlcv, 14)[-1]
+        atr = calculate_atr(ohlcv, 14)
         if atr / price < self.atr_threshold:
             return False  # Markt zu ruhig
 

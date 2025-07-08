@@ -1,10 +1,9 @@
-# core/client.py — Version 1.0.1
+# core/client.py — Version 1.0.2
 
 import asyncio
 import ccxt.async_support as ccxt
 from binance import AsyncClient
 from utils.logger import logger
-
 
 class BinanceClient:
     def __init__(self, client: AsyncClient):
@@ -38,6 +37,18 @@ class BinanceClient:
             ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
         await exchange.close()
         return ohlcv
+
+    async def futures_change_leverage(self, symbol: str, leverage: int):
+        """
+        Setzt das Leverage für ein Futures-Symbol.
+        """
+        try:
+            result = await self.client.futures_change_leverage(symbol=symbol, leverage=leverage)
+            logger.info(f"[LEVERAGE] {symbol}: Leverage wurde auf {leverage}x gesetzt. Antwort: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"[LEVERAGE] Fehler beim Setzen des Leverage für {symbol}: {e}")
+            raise
 
     async def close(self):
         await self.client.close_connection()
