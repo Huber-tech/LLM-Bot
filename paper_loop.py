@@ -22,8 +22,12 @@ from utils.drawdown_guard import DrawdownGuard
 from utils.strategy_watchdog import StrategyWatchdog
 from utils.email_notify import send_email
 from ml.collect_training_data import append_training_data
+from ml.ml_predict import predict_trade_signal
 from utils.trailing_stop import update_trailing_stops
 ML_LOGGING = os.getenv("ENABLE_TRAINING_DATA", "true").lower() == "true"
+USE_ML = os.getenv("USE_ML", "false").lower() == "true"
+ML_THRESHOLD = float(os.getenv("ML_THRESHOLD", 0.6))
+BIG_QTY_THRESHOLD = float(os.getenv("BIG_QTY_THRESHOLD", 1000))
 
 
 # Einstellungen
@@ -54,6 +58,14 @@ def has_open_trade(symbol, trades_csv="paper_trades.csv"):
     open_trades = df[df['pnl'].isnull() | (df['pnl'] == "")]
     return not open_trades.empty
 
+def get_account_balance(trades_csv="paper_trades.csv", start_balance=START_BALANCE):
+    """Calculate account balance from closed trades."""
+    if not os.path.isfile(trades_csv):
+        return start_balance
+    df = pd.read_csv(trades_csv)
+    pnl = df[df['pnl'].notna()].get('pnl', []).sum()
+    return start_balance + pnl
+
 async def get_top_usdc_symbols_by_volume(limit=100):
     url = "https://fapi.binance.com/fapi/v1/ticker/24hr"
     async with aiohttp.ClientSession() as session:
@@ -82,6 +94,31 @@ async def trade_task(symbol, client, executor):
         strategy = engine.select_strategy(ohlcv)
         signal = strategy.generate_signal(ohlcv)
         market_state = engine.evaluate_market(ohlcv)
+
+        if USE_ML:
+            trade_features = {
+                'open': ohlcv[-1][1],
+                'high': ohlcv[-1][2],
+                'low': ohlcv[-1][3],
+                'close': ohlcv[-1][4],
+                'volume': ohlcv[-1][5],
+                'rsi': rsi,
+                'ema': ema,
+                'atr': atr,
+                'bb_upper': bb_upper,
+                'bb_lower': bb_lower,
+                'market_state': market_state,
+                'strategy': strategy.__class__.__name__,
+                'signal': signal
+            }
+            _, prob = predict_trade_signal(trade_features)
+            if prob < ML_THRESHOLD:
+                logger.info(
+                    f"[ML] {symbol}: Wahrscheinlichkeit {prob:.2f} < Schwelle {ML_THRESHOLD} – Trade verworfen."
+                )
+                return
+        else:
+            prob = 1.0
         if ML_LOGGING:
             append_training_data(
                 timestamp=datetime.utcnow().isoformat(),
@@ -116,13 +153,22 @@ async def trade_task(symbol, client, executor):
             return
 
         sl, tp = strategy.sl_tp(price, atr, signal, market_state, atr / price)  # Neue SL/TP-Logik
-        qty = risk_manager.calculate_position_size(entry_price=price, stop_loss=sl)
+        qty = risk_manager.calculate_position_size(
+            entry_price=price,
+            stop_loss=sl,
+            probability=prob,
+        )
 
         if qty <= 0 or qty > 10000:
             logger.warning(f"[RISK] {symbol}: Ordergröße zu klein/groß – übersprungen.")
             return
 
         logger.info(f"[TRADE] {symbol}: {signal} @ {price:.4f} SL={sl:.4f} TP={tp:.4f} QTY={qty:.4f} Leverage={risk_manager.leverage}")
+        if qty > BIG_QTY_THRESHOLD:
+            send_email(
+                subject=f"TradingBot LARGE POSITION [{symbol}]",
+                body=f"Große Position {qty:.2f} {symbol} mit {signal} geöffnet"
+            )
 
         result = await executor.execute_trade(
             symbol=symbol,
@@ -203,8 +249,11 @@ async def trade_loop():
                     atr_lookup[symbol] = calculate_atr(ohlcv, 14)
                 current_prices = {symbol: await client.get_futures_price(symbol) for symbol in SYMBOLS}
                 # Trailing SL immer aktuell halten!
-                update_trailing_stops(csv_file="paper_trades.csv", current_prices=current_prices)    
+                update_trailing_stops(csv_file="paper_trades.csv", current_prices=current_prices)
                 update_trade_pnls(current_prices=current_prices, atr_lookup=atr_lookup)
+                new_balance = get_account_balance(start_balance=START_BALANCE)
+                risk_manager.update_balance(new_balance)
+                logger.info(f"[BALANCE] Neuer Kontostand: {new_balance:.2f} USDC")
             except Exception as e:
                 logger.warning(f"[PnL] Preisabruf fehlgeschlagen: {e}")
                 
