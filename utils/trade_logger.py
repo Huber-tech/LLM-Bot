@@ -2,26 +2,35 @@ import csv
 import os
 from datetime import datetime
 
-TRADE_LOG_FILE = "paper_trades.csv"
-
-def log_trade(
-    symbol, side, entry_price, sl, tp, qty, strategy, leverage,
-    pnl=None, exit_price=None, exit_reason=None
-):
-    file_exists = os.path.isfile(TRADE_LOG_FILE)
-    with open(TRADE_LOG_FILE, mode='a', newline='') as file:
-        writer = csv.writer(file)
+def log_trade(symbol, side, entry_price, stop_loss, take_profit, qty, strategy, leverage, trades_csv="paper_trades.csv"):
+    """
+    Loggt einen neuen Trade-Einstieg in die CSV-Datei (paper_trades.csv).
+    Enthält alle relevanten Felder, zunächst ohne Exit-Informationen.
+    """
+    file_exists = os.path.isfile(trades_csv)
+    fieldnames = [
+        "timestamp", "symbol", "side", "entry_price", "qty",
+        "stop_loss", "take_profit", "current_sl",
+        "exit_price", "exit_reason", "pnl",
+        "leverage", "strategy"
+    ]
+    trade_data = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "symbol": symbol,
+        "side": side,
+        "entry_price": round(float(entry_price), 4),
+        "qty": round(float(qty), 4),
+        "stop_loss": (round(float(stop_loss), 4) if stop_loss is not None else ""),
+        "take_profit": (round(float(take_profit), 4) if take_profit is not None else ""),
+        "current_sl": (round(float(stop_loss), 4) if stop_loss is not None else ""),
+        "exit_price": "",
+        "exit_reason": "",
+        "pnl": "",
+        "leverage": leverage,
+        "strategy": strategy
+    }
+    with open(trades_csv, mode="a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
         if not file_exists:
-            writer.writerow([
-                "timestamp", "symbol", "side", "entry_price",
-                "sl", "tp", "qty", "strategy", "leverage",
-                "current_sl", "pnl", "exit_price", "exit_reason"
-            ])
-        writer.writerow([
-            datetime.utcnow().isoformat(), symbol, side, entry_price,
-            sl, tp, qty, strategy, leverage,
-            sl,                         # initial: current_sl = sl
-            pnl if pnl is not None else "",
-            exit_price if exit_price is not None else "",
-            exit_reason if exit_reason is not None else ""
-        ])
+            writer.writeheader()
+        writer.writerow(trade_data)

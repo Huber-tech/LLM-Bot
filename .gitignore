@@ -5,3 +5,8 @@ __pycache__/
 nohup.out
 *.sqlite3
 .DS_Store
+*.csv
+*.pkl
+dashboard/static/*.png
+
+

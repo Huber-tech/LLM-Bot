@@ -1,2 +1,0 @@
-timestamp,symbol,open,high,low,close,volume,rsi,ema,atr,bb_upper,bb_lower,market_state,strategy,signal,result
-2025-07-07T11:43:59.721963,BTCUSDC,30000,30500,29900,30200,1000,55,30150,150,30400,29800,trend,BreakoutStrategy,BUY,1.2

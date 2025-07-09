@@ -2,11 +2,11 @@ import os
 import sys
 import pandas as pd
 from datetime import datetime
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-from ml.collect_training_data import append_training_data
 
-def analyze_backtest(backtest_csv_path="ml/backtest_results.csv"):
+from collect_training_data import append_training_data
+
+def analyze_backtest(backtest_csv_path="backtest_results.csv"):
     df = pd.read_csv(backtest_csv_path)
     print(f"Analysiere {len(df)} Backtest-Trades aus {backtest_csv_path}")
 

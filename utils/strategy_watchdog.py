@@ -1,42 +1,22 @@
 # utils/strategy_watchdog.py
 
-import csv
-import os
-from datetime import datetime
-from collections import defaultdict
-
-WATCHDOG_FILE = "strategy_watchdog.csv"
+from utils.equity import get_equity_scaling_factor
+from utils.strategy_blocklist import block_strategy
+from utils.logger import log
 
 class StrategyWatchdog:
     def __init__(self):
-        self.stats = defaultdict(lambda: {"trades": 0, "wins": 0, "losses": 0})
-        self._load_existing()
+        self.equity_baseline = get_equity_scaling_factor()
+        self.threshold = 0.02  # Deaktiviere Strategie, wenn -2% Equity-Verlust
 
-    def _load_existing(self):
-        if not os.path.isfile(WATCHDOG_FILE):
-            return
-        with open(WATCHDOG_FILE, mode="r") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                strat = row["strategy"]
-                self.stats[strat] = {
-                    "trades": int(row["trades"]),
-                    "wins": int(row["wins"]),
-                    "losses": int(row["losses"])
-                }
+    def evaluate(self, strategy_name):
+        current_equity_score = get_equity_scaling_factor()
+        delta = current_equity_score - self.equity_baseline
 
-    def record_trade(self, strategy_name: str, pnl: float):
-        stat = self.stats[strategy_name]
-        stat["trades"] += 1
-        if pnl > 0:
-            stat["wins"] += 1
-        else:
-            stat["losses"] += 1
-        self._save()
+        log(f"[WATCHDOG] Strategy {strategy_name}: Equity-Delta seit Start = {delta:.4f}")
 
-    def _save(self):
-        with open(WATCHDOG_FILE, mode="w", newline="") as f:
-            writer = csv.writer(f)
-            writer.writerow(["strategy", "trades", "wins", "losses"])
-            for strat, s in self.stats.items():
-                writer.writerow([strat, s["trades"], s["wins"], s["losses"]])
+        if delta < -self.threshold:
+            block_strategy(strategy_name)
+            log(f"[WATCHDOG] ⚠️ Strategie '{strategy_name}' wurde deaktiviert: Equityverlust {delta:.2%}")
+
+        self.equity_baseline = current_equity_score

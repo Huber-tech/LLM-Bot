@@ -1,94 +1,146 @@
-import sys
-import os
-import asyncio
+import argparse
 import pandas as pd
-
-# Damit die Importe klappen, egal von wo du startest:
+import ccxt
+import os
+from datetime import datetime, timedelta
+import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
-import ccxt.async_support as ccxt
-
-from strategies.indicators import calculate_rsi, calculate_ema, calculate_atr, calculate_bollinger_bands
+from strategies.engine import StrategyEngine
 from strategies.rsi_ema import RSIEMAStrategy
-from strategies.momentum import MomentumStrategy
-from strategies.volatility import VolatilityStrategy
 from strategies.breakout import BreakoutStrategy
+from strategies.momentum import MomentumStrategy
 from strategies.reversal import ReversalStrategy
+from strategies.range_trading import RangeTradingStrategy
+from strategies.volatility import VolatilityStrategy
 
-STRATEGIES = [
-    ("rsi_ema", RSIEMAStrategy()),
-    ("momentum", MomentumStrategy()),
-    ("volatility", VolatilityStrategy()),
-    ("breakout", BreakoutStrategy()),
-    ("reversal", ReversalStrategy())
-]
 
-async def fetch_ohlcv_ccxt(symbol, timeframe="1h", since=None, limit=1000):
-    exchange = ccxt.binance({
-        'enableRateLimit': True,
-        'options': {'defaultType': 'future'}
-    })
-    ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
-    await exchange.close()
-    return ohlcv
+def fetch_ohlcv(symbol, timeframe='1h', limit=1000):
+    import ccxt
+    exchange = ccxt.binance()
+    exchange.load_markets()  # <-- das ist die magische Zeile!
+    ohlcv = exchange.fetch_ohlcv(symbol, timeframe=timeframe, limit=limit)
+    df = pd.DataFrame(ohlcv, columns=['timestamp','open','high','low','close','volume'])
+    df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+    return df
 
-def simulate_trade(entry, side, sl, tp, ohlcv_next):
-    for row in ohlcv_next:
-        price = float(row[4])
-        if side == "BUY":
-            if price <= sl:
-                return sl, (sl - entry)
-            elif price >= tp:
-                return tp, (tp - entry)
-        elif side == "SELL":
-            if price >= sl:
-                return sl, (entry - sl)
-            elif price <= tp:
-                return tp, (entry - tp)
-    return price, (price - entry) if side == "BUY" else (entry - price)
 
-def run_backtest(symbol, ohlcv, out_csv="ml/backtest_results.csv", lookahead=10):
-    results = []
-    for i in range(50, len(ohlcv) - lookahead):
-        sub_ohlcv = ohlcv[:i]
-        future_ohlcv = ohlcv[i:i+lookahead]
-        price = float(ohlcv[i][4])
-        atr = calculate_atr(sub_ohlcv, 14)
-        for strat_name, strat in STRATEGIES:
-            signal = strat.generate_signal(sub_ohlcv)
-            if signal:
+def get_market_state(engine, ohlcv):
+    # Nutze die Engine wie im Paper Loop für Marktklassifizierung
+    ohlcv_list = ohlcv[['timestamp','open','high','low','close','volume']].values.tolist()
+    return engine.evaluate_market(ohlcv_list)
+
+def run_backtest(symbol, ohlcv, out_csv="backtest_results.csv", initial_balance=20.0):
+    strategies = [
+        RSIEMAStrategy(),
+        BreakoutStrategy(),
+        MomentumStrategy(),
+        ReversalStrategy(),
+        RangeTradingStrategy(),
+        VolatilityStrategy()
+    ]
+    engine = StrategyEngine()
+    balance = initial_balance
+    trades = []
+    position = None
+
+    for i in range(50, len(ohlcv)):  # 50, damit Indikatoren stabil sind
+        window = ohlcv.iloc[i-50:i]
+        price = window['close'].iloc[-1]
+        atr = window['high'].max() - window['low'].min()  # grober ATR Ersatz
+        market_state = get_market_state(engine, window)
+        # Wähle die Strategie mit Engine
+        strat = engine.select_strategy(window[['timestamp','open','high','low','close','volume']].values.tolist())
+        # Signal bestimmen
+        try:
+            signal = strat.generate_signal(window[['timestamp','open','high','low','close','volume']].values.tolist())
+            print(f"{i=} {strat.__class__.__name__} signal={signal}")
+
+        except Exception as e:
+            print(f"Fehler in Signal-Generierung bei {strat.__class__.__name__}: {e}")
+            continue
+
+        # Wenn kein Signal, nächsten Durchlauf
+        if not signal:
+            continue
+
+        # StopLoss/TakeProfit flexibel abrufen (mit Fallback für alte Signatur)
+        side = signal
+        volatility = atr / price if price > 0 else 0
+        try:
+            sl, tp = strat.sl_tp(price, atr, side, market_state, volatility)
+        except TypeError:
+            try:
+                sl, tp = strat.sl_tp(price, atr, side)
+            except TypeError:
                 sl, tp = strat.sl_tp(price, atr)
-                exit_price, pnl = simulate_trade(price, signal, sl, tp, future_ohlcv)
-                results.append({
-                    "timestamp": ohlcv[i][0],
-                    "symbol": symbol,
-                    "strategy": strat_name,
-                    "side": signal,
-                    "entry": price,
-                    "sl": sl,
-                    "tp": tp,
-                    "exit": exit_price,
-                    "pnl": pnl
-                })
-                
-    out_dir = os.path.dirname(out_csv)
-    if out_dir and not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-            
-    pd.DataFrame(results).to_csv(out_csv, index=False)
-    print(f"Backtest für {symbol} abgeschlossen – {len(results)} Trades.")
 
-async def main(symbol="BTCUSDT", timeframe="1h", candles=1000, out_csv="ml/backtest_results.csv"):
+        qty = 1  # Für Backtest einfach mit 1 Einheit traden, du kannst hier dynamisch machen!
+        entry_price = price
+        exit_price = None
+        pnl = None
+
+        # Simpler TP/SL Ausstieg im nächsten Candle
+        future_window = ohlcv.iloc[i+1:i+10] if (i+10) < len(ohlcv) else ohlcv.iloc[i+1:]
+        for idx, futrow in future_window.iterrows():
+            high = futrow['high']
+            low = futrow['low']
+            if side == "BUY":
+                if high >= tp:
+                    exit_price = tp
+                    break
+                elif low <= sl:
+                    exit_price = sl
+                    break
+            elif side == "SELL":
+                if low <= tp:
+                    exit_price = tp
+                    break
+                elif high >= sl:
+                    exit_price = sl
+                    break
+
+        if exit_price is None:
+            # Wenn weder TP noch SL erreicht, zum Schlusskurs aussteigen
+            exit_price = future_window['close'].iloc[-1]
+
+        if side == "BUY":
+            pnl = (exit_price - entry_price) * qty
+        elif side == "SELL":
+            pnl = (entry_price - exit_price) * qty
+        else:
+            pnl = 0
+
+        trade = {
+            'timestamp': window['timestamp'].iloc[-1],
+            'symbol': symbol,
+            'side': side,
+            'entry_price': entry_price,
+            'stop_loss': sl,
+            'take_profit': tp,
+            'qty': qty,
+            'exit_price': exit_price,
+            'pnl': pnl,
+            'strategy': strat.__class__.__name__,
+            'market_state': market_state
+        }
+        trades.append(trade)
+        balance += pnl
+
+    df_trades = pd.DataFrame(trades)
+    df_trades.to_csv(out_csv, index=False)
+    print(f"Backtest abgeschlossen. Ergebnisse in {out_csv} gespeichert.")
+
+def main(symbol="BTCUSDT", timeframe="1h", candles=1000, out_csv="backtest_results.csv"):
     print(f"Lade OHLCV für {symbol}, Intervall {timeframe}, Anzahl {candles} ...")
-    ohlcv = await fetch_ohlcv_ccxt(symbol, timeframe=timeframe, limit=candles)
+    ohlcv = fetch_ohlcv(symbol, timeframe, limit=candles)
     run_backtest(symbol, ohlcv, out_csv=out_csv)
 
 if __name__ == "__main__":
-    import argparse
     parser = argparse.ArgumentParser()
-    parser.add_argument("--symbol", default="BTCUSDT", help="Symbol, z.B. BTCUSDT")
-    parser.add_argument("--timeframe", default="1h", help="Kerzenintervall, z.B. 1h, 15m, 5m")
-    parser.add_argument("--candles", type=int, default=1000, help="Anzahl Kerzen")
-    parser.add_argument("--out", default="ml/backtest_results.csv", help="Ziel-Datei")
+    parser.add_argument("--symbol", type=str, default="BTCUSDT")
+    parser.add_argument("--timeframe", type=str, default="1h")
+    parser.add_argument("--candles", type=int, default=1000)
+    parser.add_argument("--out", type=str, default="backtest_results.csv")
     args = parser.parse_args()
-    asyncio.run(main(symbol=args.symbol, timeframe=args.timeframe, candles=args.candles, out_csv=args.out))
+
+    main(symbol=args.symbol, timeframe=args.timeframe, candles=args.candles, out_csv=args.out)

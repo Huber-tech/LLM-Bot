@@ -20,7 +20,8 @@ class TradeExecutor:
         sl_multiplier: float = 1.5,
         tp_multiplier: float = 3.0,
         martingale_factor: float = 1.0,
-        paper: bool = True
+        paper: bool = True,
+        custom_price=None
     ):
         qty = quantity * martingale_factor
         logger.info(f"Placing {side} order for {symbol} qty={qty:.6f} (martingale={martingale_factor})")

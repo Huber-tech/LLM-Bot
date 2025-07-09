@@ -1,9 +1,13 @@
 # ml/ml_predict.py
 import joblib
 import pandas as pd
+import os
+BASE_PATH = os.path.dirname(os.path.abspath(__file__))
+MODEL_PATH = os.path.join(BASE_PATH, "best_trading_model.pkl")
+ml_model = joblib.load(MODEL_PATH)
 
 # Modell laden (Pfad ggf. anpassen)
-ml_model = joblib.load('ml/best_trading_model.pkl')
+#ml_model = joblib.load('ml/best_trading_model.pkl')
 
 FEATURES = [
     'open', 'high', 'low', 'close', 'volume',
