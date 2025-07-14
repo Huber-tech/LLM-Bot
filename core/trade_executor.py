@@ -1,8 +1,9 @@
+# 5️⃣ core/trade_executor.py
 from utils.logger import logger
 from strategies.indicators import calculate_atr
 from binance.enums import *
 
-SIDE_Buy = "Buy"
+SIDE_BUY = "Buy"
 
 class TradeExecutor:
     def __init__(self, client, base_currency: str = "USDC"):
@@ -26,9 +27,8 @@ class TradeExecutor:
         qty = quantity * martingale_factor
         logger.info(f"Placing {side} order for {symbol} qty={qty:.6f} (martingale={martingale_factor})")
 
-        # Preis ermitteln
         if paper:
-            price = await self.client.get_futures_price(symbol)
+            price = custom_price if custom_price is not None else await self.client.get_futures_price(symbol)
             logger.info(f"(Paper) Order simulated at {price}")
         else:
             order = await self.client.client.futures_create_order(
@@ -40,7 +40,6 @@ class TradeExecutor:
             price = float(order["avgPrice"])
             logger.info(f"Order executed at price={price}")
 
-        # SL/TP berechnen wenn nicht manuell übergeben
         if sl is None or tp is None:
             ohlcv = await self.client.fetch_ohlcv(symbol, timeframe='1h', limit=atr_period + 1)
             atr = calculate_atr(ohlcv, period=atr_period)
@@ -62,3 +61,4 @@ class TradeExecutor:
             sl = entry + atr * sl_mult
             tp = entry - atr * tp_mult
         return sl, tp
+

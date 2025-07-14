@@ -1,54 +1,54 @@
-# core/client.py — Version 1.0.2
-
+# 1️⃣ core/client.py
+import os
+import aiohttp
 import asyncio
-import ccxt.async_support as ccxt
-from binance import AsyncClient
-from utils.logger import logger
 
 class BinanceClient:
-    def __init__(self, client: AsyncClient):
-        self.client = client
+    def __init__(self, testnet=False):
+        self.api_key = os.getenv("BINANCE_API_KEY")
+        self.api_secret = os.getenv("BINANCE_API_SECRET")
+        self.session = None
 
-    @classmethod
-    async def create(cls, api_key: str, api_secret: str, testnet: bool = False):
-        logger.info(f"🔌 Verbinde mit Binance (testnet={testnet})...")
-        client = await AsyncClient.create(
-            api_key=api_key,
-            api_secret=api_secret,
-            testnet=testnet
-        )
-        return cls(client)
-
-    async def get_futures_price(self, symbol: str) -> float:
-        ticker = await self.client.futures_symbol_ticker(symbol=symbol)
-        return float(ticker["price"])
-
-    async def fetch_ohlcv(self, symbol: str, timeframe: str, since: int = None, limit: int = None, until: int = None):
-        exchange = ccxt.binance({
-            'enableRateLimit': True,
-            'options': {
-                'defaultType': 'future'
-            }
-        })
-        if since and until:
-            ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, since=since)
-            ohlcv = [c for c in ohlcv if c[0] <= until]
+        if testnet:
+            self.base_url = "https://testnet.binancefuture.com"
         else:
-            ohlcv = await exchange.fetch_ohlcv(symbol, timeframe, since=since, limit=limit)
-        await exchange.close()
-        return ohlcv
+            self.base_url = "https://fapi.binance.com"
 
-    async def futures_change_leverage(self, symbol: str, leverage: int):
-        """
-        Setzt das Leverage für ein Futures-Symbol.
-        """
-        try:
-            result = await self.client.futures_change_leverage(symbol=symbol, leverage=leverage)
-            logger.info(f"[LEVERAGE] {symbol}: Leverage wurde auf {leverage}x gesetzt. Antwort: {result}")
-            return result
-        except Exception as e:
-            logger.error(f"[LEVERAGE] Fehler beim Setzen des Leverage für {symbol}: {e}")
-            raise
+    async def initialize(self):
+        if not self.session:
+            self.session = aiohttp.ClientSession()
 
     async def close(self):
-        await self.client.close_connection()
+        if self.session:
+            await self.session.close()
+
+    async def fetch_market_data(self, symbol):
+        await self.initialize()
+        url = f"{self.base_url}/fapi/v1/klines?symbol={symbol}&interval=1m&limit=100"
+        async with self.session.get(url) as response:
+            data = await response.json()
+            return data
+
+    async def get_top_volume_symbols(self, limit=20):
+        await self.initialize()
+        url = f"{self.base_url}/fapi/v1/ticker/24hr"
+        async with self.session.get(url) as response:
+            tickers = await response.json()
+            sorted_tickers = sorted(tickers, key=lambda x: float(x["quoteVolume"]), reverse=True)
+            symbols = [t["symbol"] for t in sorted_tickers if t["symbol"].endswith("USDT")]
+            return symbols[:limit]
+
+    async def fetch_ohlcv(self, symbol, timeframe="1h", limit=100):
+        await self.initialize()
+        url = f"{self.base_url}/fapi/v1/klines?symbol={symbol}&interval={timeframe}&limit={limit}"
+        async with self.session.get(url) as response:
+            data = await response.json()
+            return [[int(d[0]), float(d[1]), float(d[2]), float(d[3]), float(d[4]), float(d[5])] for d in data]
+
+    async def get_futures_price(self, symbol):
+        await self.initialize()
+        url = f"{self.base_url}/fapi/v1/ticker/price?symbol={symbol}"
+        async with self.session.get(url) as response:
+            ticker = await response.json()
+            return float(ticker['price'])
+

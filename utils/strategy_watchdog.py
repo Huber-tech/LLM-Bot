@@ -2,7 +2,7 @@
 
 from utils.equity import get_equity_scaling_factor
 from utils.strategy_blocklist import block_strategy
-from utils.logger import log
+from utils.logger import logger
 
 class StrategyWatchdog:
     def __init__(self):

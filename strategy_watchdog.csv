@@ -1,4 +1,4 @@
 strategy,trades,wins,losses
 Unknown,19,14,5
 BreakoutStrategy,14,1,13
-MomentumStrategy,28,8,20
+MomentumStrategy,331,122,209

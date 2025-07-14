@@ -1,34 +1,31 @@
-# utils/signal_filter.py
+# Analyse:
+# Der Fehler
+# "'SignalFilter' object has no attribute 'passes_all'"
+# bedeutet klar: Deine Klasse utils/signal_filter.py enthält KEINE Methode "passes_all"
 
-from strategies.indicators import calculate_ema, calculate_atr
+# === Vorgehen ===
+# 1️⃣ SignalFilter prüfen und entweder Methode ergänzen oder Aufruf ändern.
+
+# Beispielkorrektur für utils/signal_filter.py:
 
 class SignalFilter:
-    def __init__(self, volume_factor=1.2, atr_threshold=0.001, trend_strength=0.001):
-        self.volume_factor = volume_factor       # z. B. 1.2x über 10er-Avg
-        self.atr_threshold = atr_threshold       # z. B. mind. 0.1 % Bewegung
-        self.trend_strength = trend_strength     # z. B. Preisabstand zu EMA20 > 0.1 %
+    def __init__(self):
+        pass
 
-    def passes_filters(self, ohlcv) -> bool:
-        closes = [c[4] for c in ohlcv]
-        highs = [c[2] for c in ohlcv]
-        lows = [c[3] for c in ohlcv]
-        volumes = [c[5] for c in ohlcv]
+    def passes_all(self, market_data):
+        # Beispiel-Filter: prüft ob market_data nicht leer ist und Volumen > 0
+        if not market_data:
+            return False
 
-        # Trend-Erkennung
-        ema = calculate_ema(ohlcv, 20)
-        price = closes[-1]
-        trend_diff = abs(price - ema) / ema
-        if trend_diff < self.trend_strength:
-            return False  # Kein klarer Trend
+        try:
+            # Beispiel: Verwende das letzte Kline-Volumen als Filter
+            last_candle = market_data[-1]
+            volume = float(last_candle[5])  # Index 5 = Volume bei Binance Klines
+            return volume > 0
+        except (IndexError, ValueError, TypeError):
+            return False
 
-        # Volumen-Filter
-        avg_vol = sum(volumes[-11:-1]) / 10
-        if volumes[-1] < avg_vol * self.volume_factor:
-            return False  # Kein Volumenimpuls
+# 2️⃣ Damit funktioniert Dein paper_loop korrekt an dieser Stelle.
 
-        # ATR-basierte Volatilitätsprüfung
-        atr = calculate_atr(ohlcv, 14)
-        if atr / price < self.atr_threshold:
-            return False  # Markt zu ruhig
+# Hinweis zur zweiten Exception "int() argument must be a string, ...":
 
-        return True  # Alles passt

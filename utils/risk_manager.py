@@ -4,7 +4,7 @@ import os
 import json
 from datetime import datetime
 from utils.balance import get_current_equity
-from utils.logger import log
+from utils.logger import logger
 from utils.reinvest_manager import ReinvestManager
 
 

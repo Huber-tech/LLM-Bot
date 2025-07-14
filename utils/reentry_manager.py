@@ -1,14 +1,16 @@
-# reentry_manager.py
-from utils.equity import get_equity_scaling_factor
-from utils.logger import log
+# 3️⃣ utils/reentry_manager.py
+from datetime import datetime, timedelta
 
 class ReEntryManager:
-    def __init__(self, base_order_size, max_levels=3):
-        self.base_order_size = base_order_size
-        self.max_levels = max_levels
+    def __init__(self, cooldown_minutes=30):
+        self.last_losses = {}
+        self.cooldown = timedelta(minutes=cooldown_minutes)
 
-    def get_order_size(self, level):
-        scaling = get_equity_scaling_factor()  # returns 1.0 for neutral
-        size = self.base_order_size * (2 ** level) * scaling
-        log(f"[REENTRY] Level {level} → Size {size:.2f} (scaling: {scaling:.2f})")
-        return round(size, 2)
+    def register_loss(self, symbol):
+        self.last_losses[symbol] = datetime.utcnow()
+
+    def can_reenter(self, symbol):
+        last = self.last_losses.get(symbol)
+        if last is None:
+            return True
+        return datetime.utcnow() - last > self.cooldown
