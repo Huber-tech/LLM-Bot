@@ -510,3 +510,4 @@ timestamp,symbol,side,entry_price,stop_loss,take_profit,qty,strategy,leverage,cu
 2025-07-14T15:11:50.753109,BCHUSDT,Buy,502.0,0.0059,436.4618,633.0764,436.4618,,,,1,VolatilityStrategy
 2025-07-14T15:12:23.319781,BCHUSDT,Buy,502.0,0.0059,436.4618,633.0764,436.4618,,,,1,VolatilityStrategy
 2025-07-14T15:16:10.862565,BCHUSDT,Buy,501.89,0.0051,436.3518,632.9664,436.3518,,,,1,VolatilityStrategy
+2025-07-14T15:18:22.245909,BCHUSDT,Buy,502.0,0.005,436.4618,633.0764,436.4618,,,,1,VolatilityStrategy
