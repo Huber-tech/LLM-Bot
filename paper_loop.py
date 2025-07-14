@@ -9,18 +9,19 @@ from utils.logger import logger
 from utils.reentry_manager import ReEntryManager
 from utils.equity_protector import EquityProtector
 from utils.trade_logger import log_trade
+from utils.risk_manager import TradeRiskManager
 from strategies.engine import StrategyEngine
 
 PAPER = True
 START_BALANCE = 1000
 BALANCE = START_BALANCE
-TRADE_QUANTITY = 10
 
 client = BinanceClient(testnet=PAPER)
 executor = TradeExecutor(client)
 reentry = ReEntryManager()
 equity_protect = EquityProtector(START_BALANCE)
 strategy_engine = StrategyEngine()
+risk_manager = TradeRiskManager(initial_balance=START_BALANCE, leverage=1, max_exposure_pct=10.0, use_kelly=False)
 
 async def main_loop():
     global BALANCE
@@ -54,10 +55,31 @@ async def main_loop():
 
                 logger.info(f"[SIGNAL] Strategy {strategy_name} liefert BUY Entry für {symbol}")
 
+                # 🔧 Fix: entry_price korrekt aus letzter Kerze extrahieren
+                latest_candle = market_data[-1]  # Letzte Kerze
+                try:
+                    entry_price = float(latest_candle[4])
+                except (IndexError, ValueError, TypeError):
+                    logger.warning(f"[DATA] Fehler beim Lesen des entry_price für {symbol}, überspringe.")
+                    continue
+                   # Close-Preis
+                stop_loss = entry_price * 0.98   # Beispielhaft: 2% unter Entry
+
+                position_size = risk_manager.calculate_position_size(
+                    entry_price=entry_price,
+                    stop_loss=stop_loss,
+                    symbol=symbol,
+                    historical_data=market_data
+                )
+
+                if position_size <= 0:
+                    logger.info(f"[RISK] Position Size für {symbol} zu klein oder 0. Trade übersprungen.")
+                    continue
+
                 trade = await executor.execute_trade(
                     symbol=symbol,
                     side="Buy",
-                    quantity=TRADE_QUANTITY,
+                    quantity=position_size,
                     paper=True
                 )
 
@@ -71,12 +93,12 @@ async def main_loop():
                     entry_price=entry_price,
                     stop_loss=sl,
                     take_profit=tp,
-                    qty=TRADE_QUANTITY,
+                    qty=position_size,
                     strategy=strategy_name,
                     leverage=1
                 )
 
-                logger.info(f"[PAPER] Entry für {symbol} bei {entry_price:.4f} (Strategy={strategy_name})")
+                logger.info(f"[PAPER] Entry für {symbol} bei {entry_price:.4f} (Strategy={strategy_name}, Qty={position_size})")
 
                 equity_protect.update_balance(BALANCE)
                 if equity_protect.should_reduce_risk():

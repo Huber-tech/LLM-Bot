@@ -1,11 +1,10 @@
-# utils/risk_manager.py
-
 import os
 import json
 from datetime import datetime
 from utils.balance import get_current_equity
 from utils.logger import logger
 from utils.reinvest_manager import ReinvestManager
+from strategies.indicators import calculate_atr  # Wir nehmen an, dass ATR hier zentral zur Verfügung steht
 
 
 class RiskManager:
@@ -41,30 +40,67 @@ class RiskManager:
         current_equity = get_current_equity()
         allowed_min_equity = self.start_equity - self.max_loss
         if current_equity < allowed_min_equity:
-            log(f"[RISK] Max daily drawdown exceeded: {current_equity:.2f} < {allowed_min_equity:.2f}")
+            logger.warning(f"[RISK] Max daily drawdown exceeded: {current_equity:.2f} < {allowed_min_equity:.2f}")
             return False
         return True
 
 
 class TradeRiskManager:
     """
-    Berechnung der Positionsgröße mit dynamischem Risiko (Reinvest basiert auf Equity-Wachstum)
+    Erweiterte Positionsgrößenberechnung mit:
+    - dynamischem Risiko (ATR)
+    - optional Kelly Criterion
+    - Capital Exposure Limit pro Symbol
     """
-    def __init__(self, initial_balance=100.0, leverage=1):
+    def __init__(self, initial_balance=100.0, leverage=1, max_exposure_pct=10.0, use_kelly=False):
         self.initial_balance = initial_balance
         self.current_balance = initial_balance
         self.leverage = leverage
-        self.max_risk_per_trade = 0.02  # initial, wird dynamisch angepasst
+        self.max_risk_per_trade = 0.02
+        self.max_exposure_pct = max_exposure_pct
+        self.use_kelly = use_kelly
 
-    def calculate_position_size(self, entry_price, stop_loss):
+    def calculate_position_size(self, entry_price, stop_loss, symbol=None, historical_data=None, winrate=None, rr_ratio=None):
         reinvest = ReinvestManager()
         self.max_risk_per_trade = reinvest.get_risk_pct()
         risk_amount = self.current_balance * self.max_risk_per_trade
+
+        # ATR-basiert falls historische Daten verfügbar sind
+        atr_multiplier = 1.0
+        if historical_data is not None:
+            atr = calculate_atr(historical_data)
+            if atr > 0:
+                atr_multiplier = atr / entry_price
+
         stop_distance = abs(entry_price - stop_loss)
         if stop_distance == 0:
             return 0
-        qty = (risk_amount / stop_distance) * self.leverage
-        return round(qty, 4)
+
+        position_size = (risk_amount / stop_distance) * self.leverage
+
+        # Optional Kelly Criterion
+        if self.use_kelly and winrate is not None and rr_ratio is not None and rr_ratio > 0:
+            b = rr_ratio
+            p = winrate
+            q = 1 - p
+            f_star = (b * p - q) / b
+            if f_star > 0:
+                position_size *= f_star
+            else:
+                position_size = 0
+
+        # Capital Exposure Limiter pro Symbol
+        exposure_limit = self.current_balance * (self.max_exposure_pct / 100)
+        notional_value = position_size * entry_price / self.leverage
+        if notional_value > exposure_limit:
+            position_size = (exposure_limit * self.leverage) / entry_price
+            logger.info(f"[RISK] Exposure limit angepasst: {symbol} max {self.max_exposure_pct}% vom Kapital")
+
+        position_size *= atr_multiplier
+        position_size = round(position_size, 4)
+        logger.info(f"[RISK] Position Size berechnet für {symbol}: {position_size} @ {entry_price}, Risk {self.max_risk_per_trade*100:.2f}%")
+
+        return position_size
 
     def update_balance(self, new_balance):
         self.current_balance = new_balance
