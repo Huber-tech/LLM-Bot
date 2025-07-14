@@ -4,8 +4,7 @@ from datetime import datetime
 from utils.balance import get_current_equity
 from utils.logger import logger
 from utils.reinvest_manager import ReinvestManager
-from strategies.indicators import calculate_atr  # Wir nehmen an, dass ATR hier zentral zur Verfügung steht
-
+from strategies.indicators import calculate_atr
 
 class RiskManager:
     """
@@ -44,13 +43,13 @@ class RiskManager:
             return False
         return True
 
-
 class TradeRiskManager:
     """
     Erweiterte Positionsgrößenberechnung mit:
     - dynamischem Risiko (ATR)
     - optional Kelly Criterion
     - Capital Exposure Limit pro Symbol
+    - Recovery Mode Support
     """
     def __init__(self, initial_balance=100.0, leverage=1, max_exposure_pct=10.0, use_kelly=False):
         self.initial_balance = initial_balance
@@ -60,14 +59,15 @@ class TradeRiskManager:
         self.max_exposure_pct = max_exposure_pct
         self.use_kelly = use_kelly
 
-    def calculate_position_size(self, entry_price, stop_loss, symbol=None, historical_data=None, winrate=None, rr_ratio=None):
+    def calculate_position_size(self, entry_price, stop_loss, symbol=None, historical_data=None, winrate=None, rr_ratio=None, recovery_mode=False):
         reinvest = ReinvestManager()
-        self.max_risk_per_trade = reinvest.get_risk_pct()
+        base_risk = reinvest.get_risk_pct()
+        self.max_risk_per_trade = max(base_risk, 0.03) if recovery_mode else base_risk
+
         risk_amount = self.current_balance * self.max_risk_per_trade
 
-        # ATR-basiert falls historische Daten verfügbar sind
         atr_multiplier = 1.0
-        if historical_data is not None:
+        if historical_data:
             atr = calculate_atr(historical_data)
             if atr > 0:
                 atr_multiplier = atr / entry_price
@@ -78,17 +78,6 @@ class TradeRiskManager:
 
         position_size = (risk_amount / stop_distance) * self.leverage
 
-        # Optional Kelly Criterion
-        if self.use_kelly and winrate is not None and rr_ratio is not None and rr_ratio > 0:
-            b = rr_ratio
-            p = winrate
-            q = 1 - p
-            f_star = (b * p - q) / b
-            if f_star > 0:
-                position_size *= f_star
-            else:
-                position_size = 0
-
         # Capital Exposure Limiter pro Symbol
         exposure_limit = self.current_balance * (self.max_exposure_pct / 100)
         notional_value = position_size * entry_price / self.leverage
@@ -98,7 +87,7 @@ class TradeRiskManager:
 
         position_size *= atr_multiplier
         position_size = round(position_size, 4)
-        logger.info(f"[RISK] Position Size berechnet für {symbol}: {position_size} @ {entry_price}, Risk {self.max_risk_per_trade*100:.2f}%")
+        logger.info(f"[RISK] Position Size berechnet für {symbol}: {position_size} @ {entry_price}, Risk {self.max_risk_per_trade*100:.2f}%, Recovery={recovery_mode}")
 
         return position_size
 

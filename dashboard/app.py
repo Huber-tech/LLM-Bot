@@ -1,52 +1,50 @@
-from flask import Flask, render_template, send_file
+from flask import Flask, render_template, send_file, jsonify
 import os
-import sys
-import pandas as pd
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from utils.equity_plot import plot_equity_curve
-from utils.trade_logger import log_trade
-CSV_PATH = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'paper_trades.csv'))
-from utils.strategy_leaderboard import StrategyLeaderboard
-from dotenv import load_dotenv
+import json
 
-load_dotenv()
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+REPORT_PATH = os.path.join(BASE_DIR, "logs", "performance_report.json")
+EQUITY_IMAGE_PATH = os.path.join(BASE_DIR, "logs", "equity_curve.png")
+
 app = Flask(__name__)
-START_BALANCE = float(os.getenv("START_BALANCE", "20.0"))
 
 @app.route("/")
 def index():
-    if not os.path.isfile(CSV_PATH) or os.path.getsize(CSV_PATH) == 0:
-        balance = START_BALANCE
-        winrate = 0.0
-        total_trades = 0
-        trades = []
+    # Lade vorbereiteten Report aus performance_report.py
+    if os.path.isfile(REPORT_PATH):
+        with open(REPORT_PATH, "r") as f:
+            report = json.load(f)
     else:
-        df = pd.read_csv(CSV_PATH)
-        df_closed = df[df["pnl"].notna()]
-        balance = START_BALANCE + df_closed["pnl"].sum()
-        winrate = (df_closed["pnl"] > 0).mean() * 100 if len(df_closed) else 0.0
-        total_trades = len(df)
-        trades = df.tail(10).to_dict(orient="records")
-    # Equity-Kurve aktualisieren
-    plot_equity_curve(CSV_PATH, "dashboard/static/equity_curve.png", start_balance=START_BALANCE)
+        report = {
+            "latest_equity": 0,
+            "winrate": 0,
+            "total_trades": 0,
+            "last_daily_pnl": 0,
+            "active_strategies": {}
+        }
     return render_template(
         "index.html",
-        balance=balance,
-        winrate=winrate,
-        total_trades=total_trades,
-        trades=trades,
-        equity_curve_path="static/equity_curve.png"
+        balance=report["latest_equity"],
+        winrate=report["winrate"],
+        total_trades=report["total_trades"],
+        last_daily_pnl=report["last_daily_pnl"],
+        active_strategies=report["active_strategies"]
     )
-
-@app.route("/leaderboard")
-def leaderboard():
-    lb = StrategyLeaderboard()
-    _, stats = lb.compute_leaderboard()
-    return render_template("leaderboard.html", stats=stats.to_dict(orient="records"))
 
 @app.route("/chart")
 def chart():
-    return send_file("static/equity_curve.png", mimetype='image/png')
+    if os.path.isfile(EQUITY_IMAGE_PATH):
+        return send_file(EQUITY_IMAGE_PATH, mimetype='image/png')
+    else:
+        return "Equity curve not available", 404
+
+@app.route("/api/performance")
+def api_performance():
+    if os.path.isfile(REPORT_PATH):
+        with open(REPORT_PATH, "r") as f:
+            report = json.load(f)
+        return jsonify(report)
+    return jsonify({"error": "No report available"}), 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

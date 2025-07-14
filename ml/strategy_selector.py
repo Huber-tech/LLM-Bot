@@ -1,25 +1,62 @@
-# ml/strategy_selector.py
-
 import pandas as pd
 import os
+import json
 
-CSV_PATH = "paper_trades.csv"
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+CSV_PATH = os.path.join(BASE_DIR, "paper_trades.csv")
+LEADERBOARD_PATH = os.path.join(BASE_DIR, "strategy_leaderboard.json")
 
-def select_top_strategies(n=3, min_trades=10):
+MIN_TRADES = 10
+MIN_WINRATE = 0.5
+
+def load_leaderboard():
+    if os.path.exists(LEADERBOARD_PATH):
+        with open(LEADERBOARD_PATH, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_leaderboard(board):
+    with open(LEADERBOARD_PATH, "w") as f:
+        json.dump(board, f, indent=2)
+
+def update_leaderboard():
     if not os.path.exists(CSV_PATH):
-        return []
+        return {}
 
     df = pd.read_csv(CSV_PATH)
     if "strategy" not in df.columns or df.empty:
-        return []
+        return {}
 
     df = df[df["pnl"].notna()]
+    if df.empty:
+        return {}
+
     grouped = df.groupby("strategy").agg(
         trades=("strategy", "count"),
         wins=("pnl", lambda x: (x > 0).sum()),
         pnl_sum=("pnl", "sum")
     )
     grouped["winrate"] = grouped["wins"] / grouped["trades"]
-    grouped = grouped[grouped["trades"] >= min_trades]
-    grouped = grouped.sort_values(by=["pnl_sum", "winrate"], ascending=False)
-    return list(grouped.head(n).index)
+
+    leaderboard = {}
+    for strategy, row in grouped.iterrows():
+        leaderboard[strategy] = {
+            "trades": int(row["trades"]),
+            "wins": int(row["wins"]),
+            "pnl_sum": float(row["pnl_sum"]),
+            "winrate": float(row["winrate"]),
+            "active": bool(row["trades"] >= MIN_TRADES and row["winrate"] >= MIN_WINRATE)
+        }
+
+    if leaderboard:
+        save_leaderboard(leaderboard)
+
+    return leaderboard
+
+def get_active_strategies():
+    leaderboard = load_leaderboard()
+    return [s for s, stats in leaderboard.items() if stats.get("active", True)]
+
+if __name__ == "__main__":
+    lb = update_leaderboard()
+    print(f"Aktives Leaderboard:\n{json.dumps(lb, indent=2)}")

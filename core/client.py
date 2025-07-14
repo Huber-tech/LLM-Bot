@@ -1,7 +1,9 @@
-# 1️⃣ core/client.py
 import os
 import aiohttp
 import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 class BinanceClient:
     def __init__(self, testnet=False):
@@ -52,3 +54,17 @@ class BinanceClient:
             ticker = await response.json()
             return float(ticker['price'])
 
+    async def fetch_order_book(self, symbol, limit=5):
+        await self.initialize()
+        url = f"{self.base_url}/fapi/v1/depth"
+        params = {
+            "symbol": symbol,
+            "limit": limit
+        }
+        async with self.session.get(url, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                return data
+            else:
+                logger.warning(f"[ORDERBOOK] Fehler beim Abruf Orderbook für {symbol}: HTTP {response.status}")
+                return {"bids": [], "asks": []}

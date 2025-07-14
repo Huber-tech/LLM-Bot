@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Trading Bot Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
+        h1 { color: #333; }
+        .metric { margin: 10px 0; }
+        #chart { max-width: 100%; height: auto; border: 1px solid #ccc; }
+        pre { background: #eee; padding: 10px; border-radius: 5px; }
+    </style>
+    <script>
+        async function loadPerformance() {
+            try {
+                const response = await fetch("/api/performance");
+                if (!response.ok) {
+                    document.getElementById("status").innerText = "Performance data not available.";
+                    return;
+                }
+
+                const report = await response.json();
+
+                document.getElementById("equity").innerText = report.latest_equity.toFixed(2) + " USD";
+                document.getElementById("winrate").innerText = report.winrate.toFixed(2) + " %";
+                document.getElementById("last_pnl").innerText = report.last_daily_pnl.toFixed(2) + " USD";
+                document.getElementById("total_trades").innerText = report.total_trades;
+
+                let stratHtml = "";
+                for (const [name, count] of Object.entries(report.active_strategies)) {
+                    stratHtml += `${name}: ${count} trades\n`;
+                }
+                document.getElementById("strategies").innerText = stratHtml;
+            } catch (err) {
+                console.error("Failed to load performance:", err);
+                document.getElementById("status").innerText = "Error loading performance data.";
+            }
+        }
+
+        window.onload = loadPerformance;
+    </script>
+</head>
+<body>
+    <h1>Trading Bot Dashboard</h1>
+
+    <div id="status" style="color: red; font-size: 0.9em;"></div>
+
+    <div class="metric">Latest Equity: <strong id="equity">Loading...</strong></div>
+    <div class="metric">Winrate: <strong id="winrate">Loading...</strong></div>
+    <div class="metric">Last Daily PnL: <strong id="last_pnl">Loading...</strong></div>
+    <div class="metric">Total Trades: <strong id="total_trades">Loading...</strong></div>
+
+    <h2>Active Strategies:</h2>
+    <pre id="strategies">Loading...</pre>
+
+    <h2>Equity Curve:</h2>
+    <img id="chart" src="/chart" alt="Equity Curve">
+
+</body>
+</html>

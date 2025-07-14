@@ -1,0 +1,9 @@
+{
+  "MomentumStrategy": {
+    "trades": 321,
+    "wins": 120,
+    "pnl_sum": -16.078805740292708,
+    "winrate": 0.37383177570093457,
+    "active": false
+  }
+}
