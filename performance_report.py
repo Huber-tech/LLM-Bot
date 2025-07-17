@@ -23,14 +23,22 @@ def generate_report():
     df["timestamp"] = pd.to_datetime(df["timestamp"], errors="coerce")
     df = df.dropna(subset=["timestamp"])
 
+    df = df[pd.notna(df["pnl"])]  # ❗ Filter für gültige PnL-Einträge
+
+    if df.empty:
+        print("[REPORT] Keine gültigen PnL-Einträge → report nicht erzeugt.")
+        return
+
     df["date"] = df["timestamp"].dt.date
 
     daily_pnl = df.groupby("date")["pnl"].sum()
     win_trades = df[df["pnl"] > 0]
     winrate = len(win_trades) / len(df) * 100 if len(df) > 0 else 0
-    equity = df["pnl"].cumsum() + 1000  # Start Equity = 1000
+    equity = df["pnl"].cumsum() + 1000
+    latest_equity = equity.iloc[-1]  # ❗ korrekt ohne default fallback
 
     active_strategies = df["strategy"].value_counts().to_dict()
+    active_strategies = {k: v for k, v in active_strategies.items() if isinstance(k, str) and len(str(k)) > 2}
 
     # Save Equity Curve Plot
     plt.figure(figsize=(8,4))
@@ -42,11 +50,10 @@ def generate_report():
     plt.savefig(EQUITY_CURVE_PATH)
     plt.close()
 
-    # Save Performance Report JSON
     report = {
         "total_trades": len(df),
         "winrate": round(winrate, 2),
-        "latest_equity": round(equity.values[-1], 2),
+        "latest_equity": round(latest_equity, 2),
         "active_strategies": active_strategies,
         "last_daily_pnl": round(daily_pnl.iloc[-1], 2) if not daily_pnl.empty else 0
     }
@@ -55,6 +62,7 @@ def generate_report():
         json.dump(report, f, indent=2)
 
     print("[REPORT] Performance Report + Equity Curve aktualisiert.")
+
 
 if __name__ == "__main__":
     generate_report()

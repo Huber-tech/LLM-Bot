@@ -9,11 +9,13 @@
         .metric { margin: 10px 0; }
         #chart { max-width: 100%; height: auto; border: 1px solid #ccc; }
         pre { background: #eee; padding: 10px; border-radius: 5px; }
+        #status { color: red; font-size: 0.9em; }
+        .updated { font-size: 0.8em; color: #666; }
     </style>
     <script>
         async function loadPerformance() {
             try {
-                const response = await fetch("/api/performance");
+                const response = await fetch("/api/performance?_=" + new Date().getTime());
                 if (!response.ok) {
                     document.getElementById("status").innerText = "Performance data not available.";
                     return;
@@ -31,24 +33,35 @@
                     stratHtml += `${name}: ${count} trades\n`;
                 }
                 document.getElementById("strategies").innerText = stratHtml;
+
+                document.getElementById("status").innerText = "";
+                document.getElementById("updated").innerText = "Last updated: " + new Date().toLocaleTimeString();
+
+                // Reload chart image by forcing refresh (avoid caching)
+                document.getElementById("chart").src = "/chart?_=" + new Date().getTime();
+
             } catch (err) {
                 console.error("Failed to load performance:", err);
                 document.getElementById("status").innerText = "Error loading performance data.";
             }
         }
 
-        window.onload = loadPerformance;
+        window.onload = function() {
+            loadPerformance();
+            setInterval(loadPerformance, 60000); // 60 seconds refresh
+        };
     </script>
 </head>
 <body>
     <h1>Trading Bot Dashboard</h1>
 
-    <div id="status" style="color: red; font-size: 0.9em;"></div>
+    <div id="status"></div>
 
     <div class="metric">Latest Equity: <strong id="equity">Loading...</strong></div>
     <div class="metric">Winrate: <strong id="winrate">Loading...</strong></div>
     <div class="metric">Last Daily PnL: <strong id="last_pnl">Loading...</strong></div>
     <div class="metric">Total Trades: <strong id="total_trades">Loading...</strong></div>
+    <div class="updated" id="updated"></div>
 
     <h2>Active Strategies:</h2>
     <pre id="strategies">Loading...</pre>

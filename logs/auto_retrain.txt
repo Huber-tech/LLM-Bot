@@ -1,0 +1,6 @@
+2025-07-14 16:56:07,634 [INFO] [RETRAIN] Model retrained. Test Accuracy: 74.51%
+2025-07-14 16:56:07,638 [INFO] [RETRAIN] Model gespeichert als /home/idppadm/trading-bot/ml/best_trading_model.pkl
+2025-07-15 03:00:03,266 [INFO] [RETRAIN] Model retrained. Test Accuracy: 74.34%
+2025-07-15 03:00:03,266 [INFO] [RETRAIN] Model retrained. Test Accuracy: 74.34%
+2025-07-15 03:00:03,271 [INFO] [RETRAIN] Model gespeichert als /home/idppadm/trading-bot/ml/best_trading_model.pkl
+2025-07-15 03:00:03,271 [INFO] [RETRAIN] Model gespeichert als /home/idppadm/trading-bot/ml/best_trading_model.pkl
